@@ -1,0 +1,30 @@
+/* The floating Demo button and panel. Sits on top of the app without changing its layout. */
+#demoDock{--d-ink:#16211c;--d-paper:#fffdf8;--d-line:#d9d2c3;--d-accent:#1f6f5c;--d-muted:#5d6762;
+  position:fixed;right:16px;bottom:16px;z-index:1000;font-family:"Instrument Sans",system-ui,sans-serif;font-size:14px;color:var(--d-ink)}
+#demoDock .demo-fab{display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);padding:10px 16px;border:0;border-radius:999px;
+  background:var(--d-ink);color:#fff;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+#demoDock .demo-fab:focus-visible{outline:3px solid var(--d-accent);outline-offset:2px}
+#demoDock .demo-dot{width:9px;height:9px;border-radius:50%;background:#5fd3a6;box-shadow:0 0 0 3px rgba(95,211,166,.25)}
+#demoDock .demo-who{font-weight:400;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw}
+#demoDock .demo-panel{position:absolute;right:0;bottom:56px;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 96px);overflow:auto;
+  padding:16px;border:1.5px solid var(--d-line);border-radius:14px;background:var(--d-paper);box-shadow:0 18px 50px rgba(0,0,0,.22)}
+#demoDock .demo-panel[hidden]{display:none}
+#demoDock header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+#demoDock header strong{font-family:Fraunces,Georgia,serif;font-size:20px}
+#demoDock .demo-x{border:0;background:none;font-size:24px;line-height:1;cursor:pointer;color:var(--d-muted);padding:2px 6px;box-shadow:none}
+#demoDock .demo-intro{margin:0 0 12px;color:var(--d-muted);line-height:1.45}
+#demoDock .demo-people{display:grid;gap:6px}
+#demoDock .demo-person{display:grid;gap:1px;text-align:left;padding:9px 12px;border:1.5px solid var(--d-line);border-radius:10px;background:#fff;
+  color:var(--d-ink);font:inherit;cursor:pointer;box-shadow:none;transform:none}
+#demoDock .demo-person:hover{border-color:var(--d-accent)}
+#demoDock .demo-person.on{border-color:var(--d-accent);background:#eaf5f0}
+#demoDock .demo-person span{font-size:12.5px;color:var(--d-muted)}
+#demoDock .demo-tip{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#f4efe3;line-height:1.45}
+#demoDock .demo-label{display:block;margin:14px 0 4px;font-size:12.5px;color:var(--d-muted)}
+#demoDock select{width:100%;padding:8px;border:1.5px solid var(--d-line);border-radius:8px;font:inherit;background:#fff;color:var(--d-ink)}
+#demoDock .demo-actions{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:12px}
+#demoDock .demo-link{border:0;background:none;padding:0;font:inherit;color:var(--d-accent);text-decoration:underline;cursor:pointer;box-shadow:none}
+#demoDock footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--d-line)}
+#demoDock footer a{color:var(--d-ink);font-weight:600}
+.msg.demo-login{margin-top:12px}
+@media (max-width:640px){#demoDock{right:12px;bottom:12px}}

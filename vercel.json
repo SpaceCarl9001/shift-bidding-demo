@@ -1,0 +1,12 @@
+{
+  "outputDirectory": "public",
+  "functions": {
+    "api/apply-schedules.js": { "maxDuration": 60 },
+    "api/sync-assembled.js": { "maxDuration": 60 },
+    "api/swaps.js": { "maxDuration": 60 },
+    "api/coaching.js": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/keepalive", "schedule": "0 12 * * *" }
+  ]
+}

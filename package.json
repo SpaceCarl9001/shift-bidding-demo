@@ -1,0 +1,27 @@
+{
+  "name": "shift-bidding-app",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "vercel:dev": "vercel dev",
+    "deploy": "vercel --prod",
+    "check:rls": "node scripts/check-rls.js",
+    "check:setup": "node scripts/check-setup.js",
+    "check:swaps": "node scripts/check-swaps.js",
+    "check:manual": "node scripts/check-manual.js",
+    "check:trades": "node scripts/check-trades.js",
+    "check:permissions": "node scripts/check-permissions.js",
+    "check:coaching": "node scripts/check-coaching.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "vercel": "latest"
+  }
+}
