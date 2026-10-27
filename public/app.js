@@ -2960,7 +2960,7 @@ async function renderAgent(){
         ${note}
       </aside>
       <div class="card span-12" id="myAgentsCard" hidden></div>
-      <div class="card span-12" id="swapCard"><h2>Shift trades and swaps</h2><div id="swapBody" class="muted">Loading</div></div>
+      <div class="card span-12" id="swapCard"><h2>Change your schedule</h2><div id="swapBody" class="muted">Loading</div></div>
     </div>`;
 
   loadAgentSwaps();
@@ -3110,7 +3110,7 @@ async function loadAgentSwaps(){
   el("#yourShift")?.remove();
   if(me.shift) el("#view .panel-head")?.insertAdjacentHTML("beforeend",
     `<div class="msg good your-shift" id="yourShift"><span>Your assigned shift</span><strong>${esc(describeShell(me.shift))}</strong>
-      <a href="#swapCard">Trade or swap rest days below</a></div>`);
+      <a href="#swapCard">Trade your shift or swap a rest day below</a></div>`);
   if(me.shift) sb.rpc("my_coach").then(({ data })=>{
     const banner = el("#yourShift");
     if(data?.name && banner && !el("#yourCoach")) banner.querySelector("a").insertAdjacentHTML("beforebegin",
@@ -3141,100 +3141,139 @@ async function loadAgentSwaps(){
   const today = localToday();
   const showTrades = tradeBoard && !pushed && me.shift;
 
-  box.innerHTML = `
-    <p>${me.shift ? `Your shift: <b>${esc(describeShell(me.shift))}</b>` : "You can trade or swap once you have an assigned shift."}</p>
-    ${tradesAsked.length ? `<div class="list-head"><span>Trades asked of you</span></div>
-      <div class="ranklist">${tradesAsked.map(t=>`
-        <div class="bidrow swaprow">
-          <div class="grow"><strong>${esc(t.other_name)} wants to trade shifts with you for good</strong>
-            <span>You would work ${esc(shellText(t.their_shift))} instead of ${esc(shellText(t.my_shift))}.</span>
-            ${t.note ? `<span>&ldquo;${esc(t.note)}&rdquo;</span>` : ""}</div>
-          <span class="move">${tradeOpen ? `<button class="small" data-accept-trade="${t.id}">Accept</button>` : ""}
-            <button class="small ghost" data-decline-trade="${t.id}">Decline</button></span>
-        </div>`).join("")}</div>` : ""}
-    ${askedOfMe.length ? `<div class="list-head"><span>Day swaps asked of you</span></div>
-      <div class="ranklist">${askedOfMe.map(r=>`
-        <div class="bidrow swaprow">
-          <div class="grow">${r.give_date
-            ? `<strong>${esc(r.other_name)} wants to swap rest days with you</strong>
-               <span>You would work <b>${esc(fmtDate(r.give_date))}</b> (starting at their usual start time, for your usual hours) and be off <b>${esc(fmtDate(r.take_date))}</b>. They would do the opposite.</span>`
-            : `<strong>${esc(r.other_name)} wants to swap: ${esc(fmtRange(r.start_date, r.end_date))}</strong>
-               <span>You would work ${esc(shellText(r.their_shift))} instead of ${esc(shellText(r.my_shift))}.</span>`}
-            ${r.note ? `<span>&ldquo;${esc(r.note)}&rdquo;</span>` : ""}</div>
-          <span class="move"><button class="small" data-accept="${r.id}">Accept</button>
-            <button class="small ghost" data-decline="${r.id}">Decline</button></span>
-        </div>`).join("")}</div>` : ""}
-    ${showTrades ? `<div class="list-head"><span>Trade your shift</span></div>
-      ${windowNote(tWin, tradeGated || gated, "Shift trades")}
-      ${!tradeOpen ? ""
-      : tradeWaiting ? `<p class="muted">You have a trade waiting. Once it is finished or cancelled you can ask for another.</p>`
-      : choices.length ? `
-        <p class="muted" style="margin:0 0 8px">Trade your assigned shift with a colleague <b>for good</b>: it becomes your new schedule. They accept first, then your admin approves it.</p>
-        <label for="trWith">Trade with someone in ${esc(me.lob)}</label>
-        <select id="trWith">${colleagueOptions}</select>
-        <label for="trNote">Note for them and your admin (optional)</label>
-        <input id="trNote" maxlength="300" placeholder="For example: I need mornings for school" />
-        <div class="actions"><button id="trSend">Send trade request</button></div>`
-        : `<p class="muted">Nobody else in ${esc(me.lob)} has a different shift to trade with yet.</p>`}` : ""}
-    ${me.shift ? `<div class="list-head"><span>Swap a rest day</span></div>
-      <p class="muted" style="margin:0 0 8px">Give one of your work days to a colleague who is off that day, and take one of their work days that is your day off, in the same Monday-to-Sunday week. On the day you take, you start at their usual start time and work your own usual hours (for example 9 hours if you are on a 5x9), so your hours stay the same.${!pushed ? " You can ask now; your admin approves once the new schedule is in Assembled." : ""}</p>
-      ${choices.length ? `
-        <label for="swWith">Swap with someone in ${esc(me.lob)}</label>
-        <select id="swWith">${colleagueOptions}</select>
-        <label for="swWeek">Week</label>
-        <select id="swWeek">${swapWeeks().map(m=>`<option value="${m}">Week of ${esc(fmtDate(m))}</option>`).join("")}</select>
-        <div class="row">
-          <div><label for="swGive">Day you give (you will be off)</label><select id="swGive"></select></div>
-          <div><label for="swTake">Day you take (you will work)</label><select id="swTake"></select></div>
-        </div>
-        <div id="swDaysNote"></div>
-        <label for="swNote">Note for them and your admin (optional)</label>
-        <input id="swNote" maxlength="300" placeholder="For example: family event on Friday" />
-        <p class="muted" style="margin-top:8px">They accept first, then your admin approves it.</p>
-        <div class="actions"><button id="swSend">Send swap request</button></div>`
-        : `<p class="muted">Nobody else in ${esc(me.lob)} has a different shift to swap with yet.</p>`}` : ""}
-    <div id="swapMsg"></div>
-    ${tradeHistory.length ? `<div class="list-head"><span>Your trades</span></div>
-      <table><thead><tr><th>With</th><th>You would work</th><th>Status</th><th></th></tr></thead><tbody>
-      ${tradeHistory.map(t=>`<tr><td>${esc(t.other_name)}</td><td>${esc(shellText(t.their_shift))}</td>
-        <td>${swapPill(t.status, swapStatusText(t))}${t.admin_note ? `<div class="muted">${esc(t.admin_note)}</div>` : ""}</td>
-        <td style="text-align:right">${t.mine && ["pending_partner","pending_admin"].includes(t.status)
-          ? `<button class="small ghost" data-cancel-trade="${t.id}">Cancel</button>` : ""}</td></tr>`).join("")}
-      </tbody></table>` : ""}
-    ${history.length ? `<div class="list-head"><span>Your day swaps</span></div>
-      <table><thead><tr><th>Days</th><th>With</th><th>You would work</th><th>Status</th><th></th></tr></thead><tbody>
-      ${history.map(r=>`<tr><td>${r.give_date
-          ? esc(r.mine ? `Off ${fmtDate(r.give_date)}, work ${fmtDate(r.take_date)}` : `Work ${fmtDate(r.give_date)}, off ${fmtDate(r.take_date)}`)
-          : esc(fmtRange(r.start_date, r.end_date))}</td><td>${esc(r.other_name)}</td>
-        <td>${r.give_date ? "Their start time, your usual hours" : esc(shellText(r.their_shift))}</td>
-        <td>${swapPill(r.status, swapStatusText(r))}${r.admin_note ? `<div class="muted">${esc(r.admin_note)}</div>` : ""}</td>
-        <td style="text-align:right">${r.mine && ["pending_partner","pending_admin"].includes(r.status)
-          ? `<button class="small ghost" data-cancel-swap="${r.id}">Cancel</button>` : ""}</td></tr>`).join("")}
-      </tbody></table>` : ""}`;
+  // Two kinds of request, kept visibly apart so nobody mixes them up:
+  // a shift trade changes your regular shift for good; a rest-day swap changes one week only.
+  const showTradeKind = showTrades || tradesAsked.length || tradeHistory.length;
+  const showSwapKind = me.shift || askedOfMe.length || history.length;
+  const kindHead = (title, badge, blurb) => `
+    <div class="kind-head"><h3>${title}</h3><span class="kind-badge">${badge}</span></div>
+    <p class="kind-blurb">${blurb}</p>`;
+  // A shift trade as two lines: the shift now, and the shift every week after.
+  const changeLine = (from, to) => `<span class="change"><span class="change-lbl">Now</span><span>${esc(shellText(from))}</span>
+    <span class="change-lbl">Every week after</span><b>${esc(shellText(to))}</b></span>`;
+  // The Monday of a date's week, for naming the one week a rest-day swap covers.
+  const weekOf = d => addDays(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
 
-  const msg = el("#swapMsg");
-  const act = async (fn, args, done) => {
+  box.innerHTML = `
+    <p>${me.shift ? `Your regular shift: <b>${esc(describeShell(me.shift))}</b>` : "You can trade or swap once you have an assigned shift."}</p>
+    ${showTradeKind && showSwapKind ? `<div class="kind-guide">
+      <a href="#kindTrade" class="kind-trade"><b>Want a different shift for good?</b>Permanent shift trade</a>
+      <a href="#kindSwap" class="kind-swap"><b>Need a different day off in one week?</b>Rest-day swap</a>
+    </div>` : ""}
+    ${showTradeKind ? `<section class="swapkind kind-trade" id="kindTrade" aria-label="Permanent shift trade">
+      ${kindHead("Permanent shift trade", "Permanent",
+        `Exchange your whole shift with a colleague <b>for good</b>. Their shift becomes your regular schedule every week, and yours becomes theirs.`)}
+      ${tradesAsked.length ? `<div class="list-head"><span>Permanent trades asked of you</span></div>
+        <div class="ranklist">${tradesAsked.map(t=>`
+          <div class="bidrow swaprow">
+            <div class="grow"><strong>${esc(t.other_name)} wants to trade shifts with you permanently</strong>
+              ${changeLine(t.my_shift, t.their_shift)}
+              ${t.note ? `<span>&ldquo;${esc(t.note)}&rdquo;</span>` : ""}</div>
+            <span class="move">${tradeOpen ? `<button class="small" data-accept-trade="${t.id}">Accept trade</button>` : ""}
+              <button class="small ghost" data-decline-trade="${t.id}">Decline</button></span>
+          </div>`).join("")}</div>` : ""}
+      ${showTrades ? `
+        ${windowNote(tWin, tradeGated || gated, "Shift trades")}
+        ${!tradeOpen ? ""
+        : tradeWaiting ? `<p class="muted">You have a trade waiting. Once it is finished or cancelled you can ask for another.</p>`
+        : choices.length ? `
+          <label for="trWith">Trade with someone in ${esc(me.lob)}</label>
+          <select id="trWith">${colleagueOptions}</select>
+          <div id="trPreview" class="change-preview"></div>
+          <label for="trNote">Note for them and your admin (optional)</label>
+          <input id="trNote" maxlength="300" placeholder="For example: I need mornings for school" />
+          <p class="muted" style="margin-top:8px">They accept first, then your admin approves it.</p>
+          <div class="actions"><button id="trSend">Request permanent trade</button></div>`
+          : `<p class="muted">Nobody else in ${esc(me.lob)} has a different shift to trade with yet.</p>`}` : ""}
+      <div id="trMsg"></div>
+      ${tradeHistory.length ? `<div class="list-head"><span>Your permanent trades</span></div>
+        <table><thead><tr><th>With</th><th>Your shift every week after</th><th>Status</th><th></th></tr></thead><tbody>
+        ${tradeHistory.map(t=>`<tr><td>${esc(t.other_name)}</td><td>${esc(shellText(t.their_shift))}</td>
+          <td>${swapPill(t.status, swapStatusText(t))}${t.admin_note ? `<div class="muted">${esc(t.admin_note)}</div>` : ""}</td>
+          <td style="text-align:right">${t.mine && ["pending_partner","pending_admin"].includes(t.status)
+            ? `<button class="small ghost" data-cancel-trade="${t.id}">Cancel</button>` : ""}</td></tr>`).join("")}
+        </tbody></table>` : ""}
+    </section>` : ""}
+    ${showSwapKind ? `<section class="swapkind kind-swap" id="kindSwap" aria-label="Rest-day swap">
+      ${kindHead("Rest-day swap", "One week only",
+        `Swap one of your days off for one of a colleague's work days, in a single Monday-to-Sunday week. Your regular shift <b>does not change</b>.`)}
+      ${askedOfMe.length ? `<div class="list-head"><span>Rest-day swaps asked of you</span></div>
+        <div class="ranklist">${askedOfMe.map(r=>`
+          <div class="bidrow swaprow">
+            <div class="grow">${r.give_date
+              ? `<strong>${esc(r.other_name)} wants to swap rest days with you, week of ${esc(fmtDate(weekOf(r.give_date)))} only</strong>
+                 <span>You would work <b>${esc(fmtDate(r.give_date))}</b> (starting at their usual start time, for your usual hours) and be off <b>${esc(fmtDate(r.take_date))}</b>. They would do the opposite. Your regular shift stays the same.</span>`
+              : `<strong>${esc(r.other_name)} wants to swap: ${esc(fmtRange(r.start_date, r.end_date))}</strong>
+                 <span>You would work ${esc(shellText(r.their_shift))} instead of ${esc(shellText(r.my_shift))}.</span>`}
+              ${r.note ? `<span>&ldquo;${esc(r.note)}&rdquo;</span>` : ""}</div>
+            <span class="move"><button class="small" data-accept="${r.id}">Accept swap</button>
+              <button class="small ghost" data-decline="${r.id}">Decline</button></span>
+          </div>`).join("")}</div>` : ""}
+      ${me.shift ? `
+        <p class="muted" style="margin:12px 0 8px">On the day you take, you start at their usual start time and work your own usual hours (for example 9 hours if you are on a 5x9), so your hours stay the same.${!pushed ? " You can ask now; your admin approves once the new schedule is in Assembled." : ""}</p>
+        ${choices.length ? `
+          <label for="swWith">Swap with someone in ${esc(me.lob)}</label>
+          <select id="swWith">${colleagueOptions}</select>
+          <label for="swWeek">Week</label>
+          <select id="swWeek">${swapWeeks().map(m=>`<option value="${m}">Week of ${esc(fmtDate(m))}</option>`).join("")}</select>
+          <div class="row">
+            <div><label for="swGive">Day you give (you will be off)</label><select id="swGive"></select></div>
+            <div><label for="swTake">Day you take (you will work)</label><select id="swTake"></select></div>
+          </div>
+          <div id="swDaysNote"></div>
+          <label for="swNote">Note for them and your admin (optional)</label>
+          <input id="swNote" maxlength="300" placeholder="For example: family event on Friday" />
+          <p class="muted" style="margin-top:8px">They accept first, then your admin approves it.</p>
+          <div class="actions"><button id="swSend">Request rest-day swap</button></div>`
+          : `<p class="muted">Nobody else in ${esc(me.lob)} has a different shift to swap with yet.</p>`}` : ""}
+      <div id="swMsg"></div>
+      ${history.length ? `<div class="list-head"><span>Your rest-day swaps</span></div>
+        <table><thead><tr><th>Days</th><th>With</th><th>You would work</th><th>Status</th><th></th></tr></thead><tbody>
+        ${history.map(r=>`<tr><td>${r.give_date
+            ? esc(r.mine ? `Off ${fmtDate(r.give_date)}, work ${fmtDate(r.take_date)}` : `Work ${fmtDate(r.give_date)}, off ${fmtDate(r.take_date)}`)
+            : esc(fmtRange(r.start_date, r.end_date))}</td><td>${esc(r.other_name)}</td>
+          <td>${r.give_date ? "Their start time, your usual hours" : esc(shellText(r.their_shift))}</td>
+          <td>${swapPill(r.status, swapStatusText(r))}${r.admin_note ? `<div class="muted">${esc(r.admin_note)}</div>` : ""}</td>
+          <td style="text-align:right">${r.mine && ["pending_partner","pending_admin"].includes(r.status)
+            ? `<button class="small ghost" data-cancel-swap="${r.id}">Cancel</button>` : ""}</td></tr>`).join("")}
+        </tbody></table>` : ""}
+    </section>` : ""}`;
+
+  // Each kind shows its own messages, under its own form.
+  const act = async (fn, args, done, msgId) => {
     const { error } = await sb.rpc(fn, args);
-    if(error){ msg.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+    if(error){ const m = el(msgId); if(m) m.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
     await loadAgentSwaps();
-    el("#swapMsg").innerHTML = `<div class="msg good">${esc(done)}</div>`;
+    const m = el(msgId);
+    if(m) m.innerHTML = `<div class="msg good">${esc(done)}</div>`;
   };
-  box.querySelectorAll("[data-accept]").forEach(b=>{ b.onclick = ()=> act("respond_swap", { p_id:Number(b.dataset.accept), p_accept:true }, "Accepted. It now goes to your admin for approval."); });
-  box.querySelectorAll("[data-decline]").forEach(b=>{ b.onclick = ()=> act("respond_swap", { p_id:Number(b.dataset.decline), p_accept:false }, "Declined."); });
+  box.querySelectorAll("[data-accept]").forEach(b=>{ b.onclick = ()=> act("respond_swap", { p_id:Number(b.dataset.accept), p_accept:true }, "Accepted. The rest-day swap now goes to your admin for approval.", "#swMsg"); });
+  box.querySelectorAll("[data-decline]").forEach(b=>{ b.onclick = ()=> act("respond_swap", { p_id:Number(b.dataset.decline), p_accept:false }, "Declined.", "#swMsg"); });
   box.querySelectorAll("[data-cancel-swap]").forEach(b=>{
-    b.onclick = ()=>{ if(confirm("Cancel this swap request?")) act("cancel_swap", { p_id:Number(b.dataset.cancelSwap) }, "Swap request cancelled."); };
+    b.onclick = ()=>{ if(confirm("Cancel this rest-day swap request?")) act("cancel_swap", { p_id:Number(b.dataset.cancelSwap) }, "Rest-day swap request cancelled.", "#swMsg"); };
   });
-  box.querySelectorAll("[data-accept-trade]").forEach(b=>{ b.onclick = ()=> act("respond_trade", { p_id:Number(b.dataset.acceptTrade), p_accept:true }, "Accepted. The trade now goes to your admin for approval."); });
-  box.querySelectorAll("[data-decline-trade]").forEach(b=>{ b.onclick = ()=> act("respond_trade", { p_id:Number(b.dataset.declineTrade), p_accept:false }, "Declined."); });
+  box.querySelectorAll("[data-accept-trade]").forEach(b=>{
+    b.onclick = ()=>{
+      const t = tradesAsked.find(x=>String(x.id) === b.dataset.acceptTrade);
+      if(t && !confirm(`Accept a PERMANENT shift trade with ${t.other_name}?\n\nYour regular shift changes for good, every week:\nNow: ${shellText(t.my_shift)}\nAfter: ${shellText(t.their_shift)}\n\nYour admin approves it next.`)) return;
+      act("respond_trade", { p_id:Number(b.dataset.acceptTrade), p_accept:true }, "Accepted. The permanent trade now goes to your admin for approval.", "#trMsg");
+    };
+  });
+  box.querySelectorAll("[data-decline-trade]").forEach(b=>{ b.onclick = ()=> act("respond_trade", { p_id:Number(b.dataset.declineTrade), p_accept:false }, "Declined.", "#trMsg"); });
   box.querySelectorAll("[data-cancel-trade]").forEach(b=>{
-    b.onclick = ()=>{ if(confirm("Cancel this trade request?")) act("cancel_trade", { p_id:Number(b.dataset.cancelTrade) }, "Trade request cancelled."); };
+    b.onclick = ()=>{ if(confirm("Cancel this permanent trade request?")) act("cancel_trade", { p_id:Number(b.dataset.cancelTrade) }, "Trade request cancelled.", "#trMsg"); };
   });
+  const tradePick = ()=> choices.find(c=>String(c.id) === el("#trWith").value);
+  if(el("#trWith")){
+    const showTradePreview = ()=>{ el("#trPreview").innerHTML = changeLine(me.shift, tradePick().shift); };
+    el("#trWith").onchange = showTradePreview; showTradePreview();
+  }
   if(el("#trSend")) el("#trSend").onclick = async ()=>{
-    const with_ = el("#trWith"), name = with_.options[with_.selectedIndex].text.split(":")[0];
-    if(!confirm(`Ask ${name} to trade shifts with you for good?\n\nIf they accept and your admin approves, their shift becomes your new schedule.`)) return;
+    const other = tradePick();
+    if(!confirm(`Ask ${other.name} for a PERMANENT shift trade?\n\nYour regular shift changes for good, every week:\nNow: ${shellText(me.shift)}\nAfter: ${shellText(other.shift)}\n\n${other.name} accepts first, then your admin approves it.`)) return;
     el("#trSend").disabled = true;
-    await act("request_trade", { p_partner_id:Number(with_.value), p_note:el("#trNote").value },
-      `Sent to ${name}. Once they accept, it goes to your admin for approval.`);
+    await act("request_trade", { p_partner_id:Number(other.id), p_note:el("#trNote").value },
+      `Permanent trade request sent to ${other.name}. Once they accept, it goes to your admin for approval.`, "#trMsg");
     if(el("#trSend")) el("#trSend").disabled = false;
   };
   // Rest-day swap: only offer days that work. Give = I work and they are off; take = I am off
@@ -3251,16 +3290,28 @@ async function loadAgentSwaps(){
       ? `${esc(other.name)} works every day you work that week, so there is no day to give.`
       : `${esc(other.name)} is off on all of your days off that week, so there is no day to take.`} Try another week or colleague.</div>`;
     el("#swSend").disabled = !ok;
+    showSwapPreview();
   };
-  if(el("#swWith")){ el("#swWith").onchange = fillSwapDays; el("#swWeek").onchange = fillSwapDays; fillSwapDays(); }
+  // What the swap does, in one line, under the day pickers.
+  const showSwapPreview = ()=>{
+    const give = el("#swGive").value, take = el("#swTake").value;
+    if(!give || !take) return;
+    el("#swDaysNote").innerHTML = `<div class="change-preview">Week of ${esc(fmtDate(el("#swWeek").value))} only: you are off <b>${esc(fmtDate(give))}</b> and work <b>${esc(fmtDate(take))}</b>.
+      After that week you are back on your regular shift.</div>`;
+  };
+  if(el("#swWith")){
+    el("#swWith").onchange = fillSwapDays; el("#swWeek").onchange = fillSwapDays;
+    el("#swGive").onchange = showSwapPreview; el("#swTake").onchange = showSwapPreview;
+    fillSwapDays();
+  }
   if(el("#swSend")) el("#swSend").onclick = async ()=>{
     const give = el("#swGive").value, take = el("#swTake").value, with_ = el("#swWith");
-    if(!give || !take){ msg.innerHTML = `<div class="msg err">Pick a day to give and a day to take.</div>`; return; }
+    if(!give || !take){ el("#swMsg").innerHTML = `<div class="msg err">Pick a day to give and a day to take.</div>`; return; }
     const name = with_.options[with_.selectedIndex].text.split(":")[0];
-    if(!confirm(`Ask ${name} to swap rest days?\n\nYou would be off ${fmtDate(give)} and work ${fmtDate(take)}. ${name} would work ${fmtDate(give)} and be off ${fmtDate(take)}.`)) return;
+    if(!confirm(`Ask ${name} for a ONE-WEEK rest-day swap?\n\nWeek of ${fmtDate(el("#swWeek").value)} only: you would be off ${fmtDate(give)} and work ${fmtDate(take)}. ${name} would work ${fmtDate(give)} and be off ${fmtDate(take)}.\n\nYour regular shift does not change.`)) return;
     el("#swSend").disabled = true;
     await act("request_day_swap", { p_partner_id:Number(with_.value), p_give:give, p_take:take, p_note:el("#swNote").value },
-      `Sent to ${name}. Once they accept, it goes to your admin for approval.`);
+      `Rest-day swap request sent to ${name}. Once they accept, it goes to your admin for approval.`, "#swMsg");
     if(el("#swSend")) el("#swSend").disabled = false;
   };
 }

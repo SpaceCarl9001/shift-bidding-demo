@@ -401,3 +401,24 @@ tr.who-row > td{background:color-mix(in srgb, var(--tone) 6%, var(--card))}
 @media (max-width:640px){ .your-shift > span, .your-coach .lbl{min-width:0;flex-basis:100%} }
 .cb-title{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px}
 .cb-title h2{margin:0}
+
+/* Agent "Change your schedule" card: a permanent shift trade and a one-week rest-day swap, kept visibly apart. */
+.kind-trade{--kind:var(--c-violet)}
+.kind-swap{--kind:var(--c-teal)}
+.kind-guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:12px 0 0}
+.kind-guide a{display:block;padding:10px 14px;border:1.5px dashed color-mix(in srgb, var(--kind) 45%, transparent);
+              border-radius:4px 12px 4px 12px;background:color-mix(in srgb, var(--kind) 6%, var(--card));color:inherit;text-decoration:none;font-size:13.5px}
+.kind-guide a:hover{border-style:solid}
+.kind-guide a b{display:block;color:var(--kind)}
+.swapkind{margin:20px 0 0;padding:16px 18px 18px;border:1.5px solid color-mix(in srgb, var(--kind) 30%, transparent);border-left:5px solid var(--kind);
+          border-radius:2px 14px 14px 2px;background:color-mix(in srgb, var(--kind) 4%, var(--card));scroll-margin-top:16px}
+.kind-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.kind-head h3{margin:0;font-family:var(--serif);font-size:20px;font-weight:600;color:var(--kind)}
+.kind-badge{padding:3px 10px;border-radius:3px 10px 3px 10px;background:var(--kind);color:#fff;
+            font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.kind-blurb{margin:6px 0 4px;font-size:14px;color:var(--ink-soft)}
+.swapkind .ranklist .bidrow{border-color:color-mix(in srgb, var(--kind) 35%, transparent)}
+.change-preview{margin:10px 0 0;padding:9px 12px;border-radius:3px 10px 3px 10px;font-size:13.5px;
+                background:color-mix(in srgb, var(--kind) 10%, var(--card));box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--kind) 28%, transparent)}
+.change,.swaprow .grow .change{display:grid;grid-template-columns:max-content 1fr;align-items:baseline;gap:2px 12px}
+.change-lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--kind)}
