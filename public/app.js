@@ -3139,7 +3139,7 @@ async function loadAgentSwaps(){
   const choices = me.shift ? colleagues.filter(c=>c.shift && c.shift.id !== me.shift.id) : [];
   const colleagueOptions = choices.map(c=>`<option value="${c.id}">${esc(c.name)}: ${esc(describeShell(c.shift))}</option>`).join("");
   const today = localToday();
-  const showTrades = tradeBoard && !pushed && me.shift;
+  const showTrades = tradeBoard && me.shift;
 
   // Two kinds of request, kept visibly apart so nobody mixes them up:
   // a shift trade changes your regular shift for good; a rest-day swap changes one week only.
@@ -3174,6 +3174,7 @@ async function loadAgentSwaps(){
           </div>`).join("")}</div>` : ""}
       ${showTrades ? `
         ${windowNote(tWin, tradeGated || gated, "Shift trades")}
+        ${pushed && tradeOpen ? `<p class="muted">Your schedule is already in Assembled. If the trade is approved, your admin picks the Monday your new shift starts.</p>` : ""}
         ${!tradeOpen ? ""
         : tradeWaiting ? `<p class="muted">You have a trade waiting. Once it is finished or cancelled you can ask for another.</p>`
         : choices.length ? `
@@ -3189,7 +3190,7 @@ async function loadAgentSwaps(){
       ${tradeHistory.length ? `<div class="list-head"><span>Your permanent trades</span></div>
         <table><thead><tr><th>With</th><th>Your shift every week after</th><th>Status</th><th></th></tr></thead><tbody>
         ${tradeHistory.map(t=>`<tr><td>${esc(t.other_name)}</td><td>${esc(shellText(t.their_shift))}</td>
-          <td>${swapPill(t.status, swapStatusText(t))}${t.admin_note ? `<div class="muted">${esc(t.admin_note)}</div>` : ""}</td>
+          <td>${swapPill(t.status, t.status === "approved" && t.start_date ? `Approved: starts ${fmtDate(t.start_date)}` : swapStatusText(t))}${t.admin_note ? `<div class="muted">${esc(t.admin_note)}</div>` : ""}</td>
           <td style="text-align:right">${t.mine && ["pending_partner","pending_admin"].includes(t.status)
             ? `<button class="small ghost" data-cancel-trade="${t.id}">Cancel</button>` : ""}</td></tr>`).join("")}
         </tbody></table>` : ""}
@@ -3270,7 +3271,7 @@ async function loadAgentSwaps(){
   }
   if(el("#trSend")) el("#trSend").onclick = async ()=>{
     const other = tradePick();
-    if(!confirm(`Ask ${other.name} for a PERMANENT shift trade?\n\nYour regular shift changes for good, every week:\nNow: ${shellText(me.shift)}\nAfter: ${shellText(other.shift)}\n\n${other.name} accepts first, then your admin approves it.`)) return;
+    if(!confirm(`Ask ${other.name} for a PERMANENT shift trade?\n\nYour regular shift changes for good, every week:\nNow: ${shellText(me.shift)}\nAfter: ${shellText(other.shift)}\n\n${other.name} accepts first, then your admin approves it${pushed ? " and picks the Monday it starts" : ""}.`)) return;
     el("#trSend").disabled = true;
     await act("request_trade", { p_partner_id:Number(other.id), p_note:el("#trNote").value },
       `Permanent trade request sent to ${other.name}. Once they accept, it goes to your admin for approval.`, "#trMsg");
@@ -3323,7 +3324,8 @@ async function adminSwaps(){
     <aside class="note span-4 drop">
       <h3>Trades and day swaps</h3>
       <ol>
-        <li><b>Shift trades</b> are for good, before the push: two agents exchange their assigned shifts. Approving changes Results only; nothing goes to Assembled until you push.</li>
+        <li><b>Shift trades</b> are for good: two agents exchange their assigned shifts. Before the push, approving changes Results only; nothing goes to Assembled until you push.</li>
+        <li><b>After the push</b>, you pick the Monday the new shifts start and preview the change. Approving rewrites both agents' days in Assembled from then to the end of their pushed schedule (same first-week rule as the push; training, meetings and time off kept), exchanges their shifts in Results, and sends Zoho their new schedules. Add breaks and lunch afterwards with Breaks.</li>
         <li><b>Day swaps</b> swap rest days, after the push, and are always open: in one Monday-to-Sunday week, one agent gives a work day the other has off, and takes a day off the other works. Approving gives each agent the partner's day: they start at the partner's usual start time but work their own length (9 or 11 hours), breaks and lunch, in Assembled as <b>Shift Swap</b>. Daily and weekly hours stay the same.</li>
         <li>An agent asks a colleague in the same LOB, and the colleague accepts before it reaches you. Requests are listed oldest first.</li>
         <li>Shift trades have a <b>trade window</b> (below): agents can only ask for and accept trades while it is open. Declining, cancelling and your decisions work any time.</li>
@@ -3360,30 +3362,72 @@ async function loadAdminTrades(){
     return;
   }
   const pending = data.filter(t=>t.status === "pending_admin"), others = data.filter(t=>t.status !== "pending_admin");
+  // Trades whose two agents are both in Assembled already are approved from a start date, with a preview.
+  const ids = [...new Set(pending.flatMap(t=>[t.requester_id, t.partner_id]))];
+  const pushedRes = ids.length ? await sb.from("assignments").select("agent_id,pushed_at").in("agent_id", ids) : { data:[] };
+  const pushedIds = new Set((pushedRes.data || []).filter(r=>r.pushed_at).map(r=>r.agent_id));
+  const afterPush = t => pushedIds.has(t.requester_id) && pushedIds.has(t.partner_id);
+  const t0 = etToday(), firstMonday = addDays(t0, ((8 - new Date(`${t0}T00:00:00Z`).getUTCDay()) % 7) || 7);
   pendingBox.innerHTML = pending.length ? pending.map((t, i)=>`
-    <div class="swap-review" data-trade="${t.id}">
+    <div class="swap-review" data-trade="${t.id}" data-after-push="${afterPush(t) ? 1 : ""}">
       <div class="swap-order"><b>#${i + 1}</b> <span class="muted">Requested ${esc(fmtET(t.created_at))}</span></div>
       <div class="swap-pair"><b>${esc(t.requester?.name)}</b> <span class="muted">${esc(t.requester_shift ? describeShell(t.requester_shift, false) : shellText(null))} ${setBadge(t.requester_shift?.set_name)}</span>
         <span class="swap-arrow">&harr;</span><b>${esc(t.partner?.name)}</b> <span class="muted">${esc(t.partner_shift ? describeShell(t.partner_shift, false) : shellText(null))} ${setBadge(t.partner_shift?.set_name)}</span></div>
-      <p class="muted">Trade for good: each gets the other's shift as their new schedule.${t.note ? ` &ldquo;${esc(t.note)}&rdquo;` : ""}</p>
+      ${afterPush(t) ? `
+        <p class="muted">Trade for good, <b>after the push</b>: both schedules are in Assembled. Approving rewrites both agents' days in Assembled from the start date to the end of their pushed schedule, then exchanges their shifts in Results.${t.note ? ` &ldquo;${esc(t.note)}&rdquo;` : ""}</p>
+        <div class="row"><div style="max-width:240px"><label>New shifts start on (a Monday)</label><input type="date" class="trStart" value="${firstMonday}" min="${firstMonday}" step="7" /></div></div>`
+      : `<p class="muted">Trade for good: each gets the other's shift as their new schedule.${t.note ? ` &ldquo;${esc(t.note)}&rdquo;` : ""}</p>`}
       <label>Note to the agents (optional)</label><input class="trNote" maxlength="300" />
       <div class="actions">
-        <button data-trade-act="approve">Approve trade</button>
+        ${afterPush(t) ? `<button class="ghost" data-trade-act="preview">Preview changes</button><button data-trade-act="approve" disabled>Approve trade</button>`
+          : `<button data-trade-act="approve">Approve trade</button>`}
         <button class="danger" data-trade-act="reject">Reject</button>
       </div>
-      <div class="trMsg"></div>
+      <div class="trMsg"></div><div class="swPreview"></div>
     </div>`).join("") : `No ${esc(currentLob)} shift trades are waiting for approval.`;
   pendingBox.querySelectorAll(".swap-review[data-trade]").forEach(card=>{
-    const id = Number(card.dataset.trade), msg = card.querySelector(".trMsg");
+    const id = Number(card.dataset.trade), msg = card.querySelector(".trMsg"), out = card.querySelector(".swPreview");
+    const viaAssembled = !!card.dataset.afterPush, approveBtn = card.querySelector('[data-trade-act="approve"]');
+    const start = ()=> card.querySelector(".trStart")?.value;
+    let previewed = null;   // the start date the preview was for
+    const busy = on => card.querySelectorAll("button").forEach(x=>{ x.disabled = on || (viaAssembled && x === approveBtn && previewed !== start()); });
+    card.querySelector(".trStart")?.addEventListener("change", ()=>{ previewed = null; out.innerHTML = ""; msg.innerHTML = ""; busy(false); });
+    const done = async text => { await loadAdminTrades(); el("#trPending").insertAdjacentHTML("afterbegin", text); markPendingSwaps(); };
     card.querySelectorAll("button[data-trade-act]").forEach(b=>{
       b.onclick = async ()=>{
-        const approve = b.dataset.tradeAct === "approve";
+        const act = b.dataset.tradeAct, note = card.querySelector(".trNote").value;
+        if(act === "preview"){
+          if(!start()){ msg.innerHTML = `<div class="msg err">Pick the Monday the new shifts start.</div>`; return; }
+          busy(true); msg.innerHTML = `<div class="msg warn">Checking Assembled</div>`;
+          const { ok, body } = await swapApi({ trade:true, action:"preview", id, startDate: start() });
+          previewed = ok && !body.issues.length ? start() : null;
+          busy(false);
+          if(!ok){ msg.innerHTML = `<div class="msg err">${esc(body.error)}</div>`; out.innerHTML = ""; return; }
+          msg.innerHTML = body.issues.length
+            ? `<div class="msg err">This trade cannot be approved from ${esc(fmtDate(body.startDate))} yet:<br>${body.issues.map(esc).join("<br>")}</div>`
+            : `<div class="msg good">Preview only, nothing has changed yet. Approving changes both agents' schedules in Assembled as shown below. Check it, then click Approve trade.</div>`;
+          out.innerHTML = renderTradePreview(body);
+          return;
+        }
+        if(act === "approve" && viaAssembled){
+          if(previewed !== start()) return;
+          if(!confirm(`Approve this trade from ${fmtDate(start())}? This rewrites both agents' schedules in Assembled straight away.`)) return;
+          busy(true); msg.innerHTML = `<div class="msg warn">Updating Assembled. This can take up to a minute.</div>`;
+          const { ok, body } = await swapApi({ trade:true, action:"approve", id, startDate: start(), note });
+          busy(false);
+          if(!ok){ msg.innerHTML = `<div class="msg err">${esc(body.error)}${(body.issues||[]).length ? "<br>" + body.issues.map(esc).join("<br>") : ""}</div>`; return; }
+          const zr = body.zoho && body.zoho.result;
+          await done(`<div class="msg good">Trade approved. From ${esc(fmtDate(body.startDate))}, ${body.people.map(p=>`${esc(p.name)} works ${esc(describeShell(p.to, false))}`).join(" and ")} in Assembled, and their shifts are exchanged in Results.
+            Add breaks and lunch for both from ${esc(fmtDate(body.startDate))} with Breaks on the Apply to Assembled tab.${zr && zr.every(x=>x.ok) ? " Zoho is updated for both." : ""}</div>
+            ${zr && zr.some(x=>!x.ok) ? `<div class="msg warn">Zoho was not updated for ${zr.filter(x=>!x.ok).map(x=>`${esc(x.name)} (${esc(x.error)})`).join("; ")}. Update their schedule in Zoho by hand.</div>` : ""}
+            ${!zr ? `<div class="msg warn">Zoho was not updated${body.zoho && body.zoho.off ? `: ${esc(String(body.zoho.off).replace(/.$/, ""))}` : body.zoho && body.zoho.error ? `: ${esc(body.zoho.error)}` : ": sending to Zoho is off"}. Update both schedules in Zoho by hand.</div>` : ""}`);
+          return;
+        }
+        const approve = act === "approve";
         card.querySelectorAll("button").forEach(x=>{ x.disabled = true; });
-        const { error } = await sb.rpc("decide_trade", { p_id:id, p_approve:approve, p_note:card.querySelector(".trNote").value });
-        if(error){ msg.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; card.querySelectorAll("button").forEach(x=>{ x.disabled = false; }); return; }
-        await loadAdminTrades();
-        el("#trPending").insertAdjacentHTML("afterbegin", `<div class="msg good">${approve ? "Trade approved. Their shifts are exchanged in Results and will go to Assembled when you push." : "Trade rejected."}</div>`);
-        markPendingSwaps();
+        const { error } = await sb.rpc("decide_trade", { p_id:id, p_approve:approve, p_note:note });
+        if(error){ msg.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; busy(false); return; }
+        await done(`<div class="msg good">${approve ? "Trade approved. Their shifts are exchanged in Results and will go to Assembled when you push." : "Trade rejected."}</div>`);
       };
     });
   });
@@ -3391,12 +3435,42 @@ async function loadAdminTrades(){
     ${others.map(t=>`<tr><td>${esc(fmtET(t.created_at))}</td>
       <td>${esc(t.requester?.name)} &harr; ${esc(t.partner?.name)}</td>
       <td class="muted">${esc(shellText(t.requester_shift))} &harr; ${esc(shellText(t.partner_shift))}</td>
-      <td>${swapPill(t.status, ({ pending_partner:`Waiting for ${t.partner?.name || "partner"}`, approved:"Approved",
+      <td>${swapPill(t.status, ({ pending_partner:`Waiting for ${t.partner?.name || "partner"}`, approved: t.start_date ? `Approved, from ${fmtDate(t.start_date)}` : "Approved",
         declined: t.auto_declined ? "Auto declined: window closed" : "Declined by partner",
         cancelled:"Cancelled by requester", rejected:"Rejected" })[t.status] || t.status)}</td>
       <td>${t.decided_at ? `${esc(new Date(t.decided_at).toLocaleDateString("en-US", { timeZone:APP_TZ }))}<div class="muted">${esc(t.decided_by || "")}</div>` : ""}</td>
-      <td>${esc(t.admin_note || t.note || "")}</td></tr>`).join("")}
+      <td>${esc(t.admin_note || t.note || "")}${t.result && t.result.added != null ? `<div class="muted">${t.result.removed} old days removed, ${t.result.added} new shifts added in Assembled</div>` : ""}</td></tr>`).join("")}
     </tbody></table>` : "No other shift trades yet.";
+}
+// What approving a trade after the push changes in Assembled and Zoho, from the preview.
+function renderTradePreview(p){
+  const time = t => new Date(t * 1000).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", timeZone:APP_TZ });
+  const rows = p.people.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td class="muted">${esc(describeShell(x.from, false))}</td><td><b>${esc(describeShell(x.to, false))}</b></td>
+    <td>${x.through ? `${esc(fmtDate(p.startDate))} to ${esc(fmtDate(x.through))}<div class="muted">${x.removed.length} old day${x.removed.length === 1 ? "" : "s"} removed, ${x.added.length} new shift${x.added.length === 1 ? "" : "s"} added${x.shiftType ? ` as ${esc(x.shiftType)}` : ""}</div>`
+      : `<span class="muted">Nothing in Assembled from ${esc(fmtDate(p.startDate))}</span>`}</td></tr>`).join("");
+  const points = [];
+  for(const x of p.people){
+    for(const m of x.moves) points.push(`${esc(x.name)}: the shift on ${esc(fmtDate(m.from))} moves to ${esc(fmtDate(m.to))} that week, so they don't work too many days in a row.`);
+    for(const n of x.notes) points.push(esc(n));
+    for(const o of x.outside) points.push(o.timeoff
+      ? `${esc(x.name)}'s ${esc(o.type)} on ${esc(fmtDate(o.date))} is kept, but that is now a day off for them. Remove it in Assembled if it's no longer needed.`
+      : `${esc(x.name)}'s ${esc(o.type)} on ${esc(fmtDate(o.date))}, ${esc(time(o.start))} to ${esc(time(o.end))}, is kept at the same time, but it is outside their new hours. Move it in Assembled.`);
+    for(const c of x.conflicts) points.push(`${esc(x.name)} already has ${esc(c.found)} on ${esc(fmtDate(c.date))} at the new shift's time, so no shift is added that day. Add it in Assembled by hand.`);
+  }
+  const kept = p.people.reduce((n, x)=>n + x.kept, 0), breaks = p.people.reduce((n, x)=>n + x.droppedBreaks, 0);
+  return `<table><thead><tr><th>From ${esc(fmtDate(p.startDate))}</th><th>Now</th><th>New shift</th><th>In Assembled</th></tr></thead><tbody>${rows}</tbody></table>
+    ${p.warnings.length ? `<div class="msg warn">${p.warnings.map(esc).join("<br>")}</div>` : ""}
+    ${points.length ? `<ul class="preview-list">${points.map(x=>`<li>${x}</li>`).join("")}</ul>` : ""}
+    <p class="muted">Times are in ET. ${kept ? `${kept} training, meeting or time-off event${kept === 1 ? " is" : "s are"} kept as ${kept === 1 ? "it is" : "they are"}. ` : ""}${breaks ? "Breaks and lunch are not copied, because the hours change: after approving, add them with Breaks on the Apply to Assembled tab. " : ""}Days before ${esc(fmtDate(p.startDate))} are not changed.</p>
+    ${tradeZohoNote(p.zoho)}`;
+}
+function tradeZohoNote(z){
+  if(!z) return "";
+  if(z.off) return `<p class="muted">Zoho: not updated. ${esc(z.off)}</p>`;
+  if(z.error) return `<div class="msg warn">Zoho could not be checked (${esc(z.error)}). Approving still updates Assembled; update Zoho by hand.</div>`;
+  if(!z.sendingOn) return `<p class="muted">Zoho: sending is turned off, so only Assembled is updated.</p>`;
+  const ok = z.people.filter(x=>!x.problems.length), bad = z.people.filter(x=>x.problems.length);
+  return `<div class="msg ${bad.length ? "warn" : "good"}">Zoho: approving also sends ${ok.length ? ok.map(x=>`<b>${esc(x.zohoName)}</b>`).join(" and ") : "nobody"} their new schedule from the start date (permanent: Only for this range unticked).${bad.length ? ` Not ${bad.map(x=>`${esc(x.name)} (${esc(x.problems.join("; "))})`).join("; ")}: update them in Zoho by hand.` : ""}</div>`;
 }
 // ---- trade windows (one per LOB): when agents may ask for and accept shift trades, stored in
 // swap_windows with kind 'trade'. Day swaps are always open, so they have no window.

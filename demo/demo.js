@@ -5,13 +5,13 @@
   const SEEN = "shiftBiddingDemo.seenIntro";
   const PEOPLE = [
     { email: "owner@example.com", name: "Owner", role: "Admin, every permission",
-      tip: "Run Auto assign for Support, then publish it on Results. On Swaps, preview and approve Jordan's day swap. On Coaches, try Smart Scheduling." },
+      tip: "Run Auto assign for Support, then publish it on Results. On Swaps, preview and approve Jordan's day swap, or a Sales shift trade from a Monday (it rewrites both schedules in Assembled). On Coaches, try Smart Scheduling." },
     { email: "lead@example.com", name: "Team lead", role: "Admin who can only approve swaps and set windows",
       tip: "Every tab is viewable, but buttons outside this admin's permissions are locked." },
     { email: "maria.santos@example.com", name: "Maria Santos", role: "Support agent, bidding is open",
       tip: "Rank the Support shifts from favourite to least favourite and save. Once an admin runs and publishes Auto assign, her shift appears here." },
     { email: "jordan.reyes@example.com", name: "Jordan Reyes", role: "Sales agent with an assigned shift",
-      tip: "See the assigned shift and coach, answer Sam's rest-day swap request, or ask a colleague for one." },
+      tip: "See the assigned shift and coach, answer Sam's rest-day swap request, or ask a colleague for one. Sales is already in Assembled and its trade window is open, so you can also ask for a permanent trade: the admin picks the Monday it starts." },
     { email: "nora.quinn@example.com", name: "Nora Quinn", role: "Sales coach",
       tip: "Coaches bid on coach shifts too. Nora sees the agents in her coach group, with their shifts." },
   ];

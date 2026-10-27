@@ -406,6 +406,7 @@
       if (mine == null) fail("You do not have an assigned shift to trade yet.");
       if (theirs == null) fail(`${p.name} does not have an assigned shift yet.`);
       if (mine === theirs) fail(`You and ${p.name} have the same shift, so there is nothing to trade.`);
+      if (!!assignmentOf(a.id).pushed_at !== !!assignmentOf(p.id).pushed_at) fail(`Your schedule and ${p.name}'s are not both in Assembled yet, so you cannot trade right now. Ask your admin.`);
       if (T("shift_trades").some(t => ["pending_partner", "pending_admin"].includes(t.status) && [t.requester_id, t.partner_id].some(x => x === a.id || x === p.id))) {
         fail(`You or ${p.name} already have a shift trade waiting. Finish or cancel it first.`);
       }
@@ -435,7 +436,7 @@
         if (A.shift_id !== t.requester_shift_id || B.shift_id !== t.partner_shift_id) {
           fail("Their assigned shifts have changed since they asked (auto assign was re-run or another trade was approved). Reject this trade and ask them to request it again.");
         }
-        if (A.pushed_at || B.pushed_at) fail("Their schedule is already in Assembled, so a trade here would not reach it. Use a day swap instead, or reject this trade.");
+        if (A.pushed_at || B.pushed_at) fail("Their schedules are already in Assembled. Pick the date the new shifts start, then use Preview changes and Approve trade.");
         A.shift_id = t.partner_shift_id; B.shift_id = t.requester_shift_id;
       }
       Object.assign(t, { status: p_approve ? "approved" : "rejected", decided_at: nowIso(), decided_by: me(), admin_note: (p_note || "").trim() || null });
@@ -554,6 +555,76 @@
   const eventsOf = (asmId, from = -Infinity, to = Infinity) => A().events.filter(e => e.agent_id === asmId && e.end_time > from && e.start_time < to);
   const newEvent = e => ({ id: `ev-${A().nextEvent++}`, ...e });
   const LOB_TEAMS = ["Sales", "Support", "Retention", "Billing"];
+
+  // Permanent shift trades after the push: lib/tradeAfterPush.js on the fake Assembled (no Zoho here).
+  function tradeAfterPush({ action, id, startDate, note }) {
+    if (action === "approve" && !hasPerm("swaps")) return [403, { error: "You do not have permission to approve trades. You can still preview them." }];
+    if (!["preview", "approve"].includes(action)) return [400, { error: "Need an action (preview or approve) and a trade id." }];
+    const addD = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || ""))) return [400, { error: "Pick the date the new shifts start." }];
+    if (new Date(`${startDate}T00:00:00Z`).getUTCDay() !== 1) return [400, { error: "The new shifts start on a Monday, the first day of a work week. Pick a Monday." }];
+    if (startDate <= today()) return [400, { error: "Pick a Monday after today: days that have started are not changed." }];
+    const t = T("shift_trades").find(x => same(x.id, id));
+    if (!t) return [404, { error: "Trade not found." }];
+    if (t.status !== "pending_admin") return [409, { error: `This trade is not waiting for approval any more (it is ${t.status.replace("_", " ")}).` }];
+    const A_ = agentById(t.requester_id), B_ = agentById(t.partner_id), shA = shellById(t.requester_shift_id), shB = shellById(t.partner_shift_id);
+    if (!shA || !shB) return [409, { error: "One of the shifts in this trade has been deleted. Reject it." }];
+    const xA = assignmentOf(A_.id), xB = assignmentOf(B_.id);
+    if (!xA || !xB || xA.shift_id !== t.requester_shift_id || xB.shift_id !== t.partner_shift_id) {
+      return [409, { error: "Their assigned shifts have changed since they asked (auto assign was re-run or another trade was approved). Reject this trade and ask them to request it again." }];
+    }
+    if (!xA.pushed_at || !xB.pushed_at) return [409, { error: "Both schedules must be in Assembled first." }];
+    const sides = [{ who: "A", person: A_, oldShell: shA, newShell: shB }, { who: "B", person: B_, oldShell: shB, newShell: shA }];
+    const issues = [], warnings = [];
+    for (const s of T("swap_requests").filter(r => ["pending_partner", "pending_admin", "approved"].includes(r.status) && r.end_date >= startDate
+      && [r.requester_id, r.partner_id].some(x => x === A_.id || x === B_.id))) {
+      const names = [A_, B_].filter(p => [s.requester_id, s.partner_id].includes(p.id)).map(p => p.name).join(" and ");
+      const verb = names.includes(" and ") ? "have" : "has", days = `${schedule.niceDate(s.give_date)} and ${schedule.niceDate(s.take_date)}`;
+      issues.push(s.status === "approved" ? `${names} ${verb} an approved day swap on ${days}, which used the old shifts. Pick a start date after it.`
+        : `${names} ${verb} a day swap waiting on ${days}. Reject or approve it first, or pick a start date after it.`);
+    }
+    const lastDate = addD(startDate, 83);
+    const from = Math.floor(Date.parse(`${addD(startDate, -15)}T00:00:00Z`) / 1000), to = Math.floor(Date.parse(`${addD(lastDate, 2)}T00:00:00Z`) / 1000);
+    const typeOf = Object.fromEntries(A().activityTypes.map(x => [x.id, x])), tn = tid => (typeOf[tid] || {}).name || "Unknown type";
+    const kind = tid => /break/i.test(tn(tid)) ? "break" : /lunch/i.test(tn(tid)) ? "lunch" : !typeOf[tid] ? "other" : typeOf[tid].timeoff ? "timeoff" : typeOf[tid].productive ? "work" : "other";
+    for (const s of sides) {
+      s.activities = eventsOf(s.person.assembled_agent_id, from, to);
+      const last = schedule.pushedThrough({ shell: s.oldShell, startDate, endDate: lastDate, activities: s.activities, kind });
+      s.through = last && [addD(last, (7 - new Date(`${last}T00:00:00Z`).getUTCDay()) % 7), lastDate].sort()[0];
+      const count = {};
+      for (const date of s.through ? schedule.eachDate(startDate, s.through) : []) {
+        const win = schedule.shellWindow(s.oldShell, date);
+        if (win) for (const a of schedule.chainAround(s.activities, win)) if (kind(a.type_id) === "work") count[a.type_id] = (count[a.type_id] || 0) + (a.end_time - a.start_time);
+      }
+      s.shiftTypeId = Object.keys(count).sort((x, y) => count[y] - count[x])[0] || null;
+    }
+    for (const s of sides) if (!s.shiftTypeId) s.shiftTypeId = (sides.find(o => o.shiftTypeId) || {}).shiftTypeId || null;
+    for (const s of sides) {
+      const days = String(s.newShell.days || "").split(",").filter(x => x.trim() !== "").length;
+      s.plan = schedule.planShiftChange({ oldShell: s.oldShell, newShell: s.newShell, startDate, endDate: s.through, activities: s.activities,
+        kind, shiftTypeId: s.shiftTypeId, maxRun: Math.min(13, days + 1), name: s.person.name });
+      issues.push(...s.plan.issues);
+      if (!s.through) warnings.push(`${s.person.name} has no shifts in Assembled from ${schedule.niceDate(startDate)}, so nothing changes there for them. The next push uses their new shift.`);
+    }
+    const summary = { trade: true, id: t.id, startDate, issues, warnings,
+      people: sides.map(s => ({ name: s.person.name, from: noSet(s.oldShell), to: noSet(s.newShell), through: s.through,
+        removed: s.plan.removedDays, added: s.plan.addedDays, moves: s.plan.moves, droppedBreaks: s.plan.droppedBreaks, kept: s.plan.kept.length, notes: s.plan.notes,
+        outside: s.plan.outside.map(o => ({ ...o, type: tn(o.type_id) })),
+        conflicts: s.plan.conflicts.map(c => ({ date: c.date, found: c.found.map(tn).join(", ") })), shiftType: s.shiftTypeId ? tn(s.shiftTypeId) : null })),
+      zoho: { off: "Zoho is not connected in the demo." } };
+    if (action === "preview") return { preview: true, ...summary };
+    if (issues.length) return [409, { error: "This trade has issues to sort out first.", ...summary }];
+    for (const s of sides) {
+      const asmId = s.person.assembled_agent_id;
+      A().events = A().events.filter(e => !(e.agent_id === asmId && s.plan.deletes.some(d => e.start_time >= d.start && e.end_time <= d.end)));
+      for (const e of [...s.plan.shifts, ...s.plan.kept]) A().events.push(newEvent({ agent_id: asmId, type_id: e.type_id, start_time: e.start_time, end_time: e.end_time,
+        ...(e.description ? { description: e.description } : {}) }));
+    }
+    xA.shift_id = t.partner_shift_id; xB.shift_id = t.requester_shift_id;
+    Object.assign(t, { status: "approved", start_date: startDate, decided_at: nowIso(), decided_by: me(), admin_note: (note || "").trim() || null,
+      result: { removed: sides.reduce((n, s) => n + s.plan.removedDays.length, 0), added: sides.reduce((n, s) => n + s.plan.addedDays.length, 0) } });
+    return { ok: true, status: "approved", ...summary };
+  }
 
   const API = {
     "config": () => ({ url: "demo", anonKey: "demo", adminEmails: T("admins").map(a => a.email) }),
@@ -710,6 +781,7 @@
     },
     "swaps"(body) {
       if (!isAdmin()) return [403, { error: "Admins only" }];
+      if (body && body.trade) return tradeAfterPush(body);
       const { action, id, note } = body || {};
       if (["approve", "reject"].includes(action) && !hasPerm("swaps")) return [403, { error: "You do not have permission to approve or reject swaps. You can still preview them." }];
       const swap = T("swap_requests").find(r => same(r.id, id));

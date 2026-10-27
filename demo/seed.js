@@ -102,7 +102,8 @@ window.DemoSeed = function seed() {
   }
   add("published_results", { lob: "Sales", published_at: iso(now - 10 * D), published_by: "owner@example.com" });
   add("published_results", { lob: "Sales Coaches", published_at: iso(now - 8 * D), published_by: "owner@example.com" });
-  add("swap_windows", { lob: "Sales", kind: "trade", opens_at: iso(now - 10 * D), closes_at: iso(now - 9 * D - 2 * H), updated_at: iso(now - 10 * D) });
+  // Sales trades reopened after the push: approving one rewrites both schedules in (fake) Assembled from a Monday.
+  add("swap_windows", { lob: "Sales", kind: "trade", opens_at: iso(now - 1 * D), closes_at: iso(now + 7 * D), updated_at: iso(now - 1 * D) });
   add("swap_windows", { lob: "Support", kind: "trade", opens_at: iso(now - 2 * D), closes_at: iso(now + 10 * D), updated_at: iso(now - 2 * D) });
 
   // ---- coaches ------------------------------------------------------------------------
